@@ -10,6 +10,20 @@
 #include <functional>
 #include <fmt/ranges.h>
 
+#include <opentelemetry/exporters/otlp/otlp_grpc_exporter_factory.h>
+#include <opentelemetry/sdk/trace/processor.h>
+#include <opentelemetry/sdk/trace/provider.h>
+#include <opentelemetry/sdk/trace/simple_processor_factory.h>
+#include <opentelemetry/sdk/trace/tracer_provider_factory.h>
+#include <opentelemetry/trace/provider.h>
+
+namespace trace_sdk = opentelemetry::sdk::trace;
+namespace trace_api = opentelemetry::trace;
+namespace otlp      = opentelemetry::exporter::otlp;
+
+static std::shared_ptr<trace_sdk::TracerProvider> g_tracer_provider;
+
+#include <string>
 #include <seastar/util/closeable.hh>
 #include <seastar/core/abort_source.hh>
 #include "exceptions/exceptions.hh"
@@ -2498,6 +2512,35 @@ sharded<locator::shared_token_metadata> token_metadata;
   }
 }
 
+void initTracerOTLP(const std::string &collector_endpoint = "localhost:4317", const std::string &cacert_path = "") {
+  otlp::OtlpGrpcExporterOptions opts;
+  opts.endpoint = collector_endpoint;
+  opts.use_ssl_credentials = !cacert_path.empty();
+  if (opts.use_ssl_credentials) {
+    opts.ssl_credentials_cacert_path = cacert_path;
+  }
+
+  auto exporter  = otlp::OtlpGrpcExporterFactory::Create(opts);
+  auto processor = trace_sdk::SimpleSpanProcessorFactory::Create(std::move(exporter));
+  
+  g_tracer_provider = trace_sdk::TracerProviderFactory::Create(std::move(processor));
+
+  trace_sdk::Provider::SetTracerProvider(
+      opentelemetry::nostd::shared_ptr<opentelemetry::trace::TracerProvider>(g_tracer_provider)
+  );
+}
+
+void cleanupTracerOTLP() {
+  if (g_tracer_provider) {
+    g_tracer_provider->ForceFlush();
+  }
+
+  trace_sdk::Provider::SetTracerProvider(
+      opentelemetry::nostd::shared_ptr<opentelemetry::trace::TracerProvider>());
+  
+  g_tracer_provider.reset();
+}
+
 int main(int ac, char** av) {
     // early check to avoid triggering
     if (!cpu_sanity()) {
@@ -2593,5 +2636,15 @@ int main(int ac, char** av) {
         ::p11_kit_override_system_files(NULL, NULL, p11_modules_str.c_str(), NULL, NULL);
     }
 
-    return main_func(ac, av);
+    initTracerOTLP();
+    auto tracer = trace_api::Provider::GetTracerProvider()->GetTracer("scylladb");
+    auto span   = tracer->StartSpan("main");
+    auto scope  = tracer->WithActiveSpan(span);
+    
+    int res = main_func(ac, av);
+
+    span->End();
+    cleanupTracerOTLP();
+
+    return res;
 }
