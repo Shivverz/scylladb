@@ -8,6 +8,7 @@
 # SPDX-License-Identifier: LicenseRef-ScyllaDB-Source-Available-1.0
 #
 
+import shutil
 import argparse
 import copy
 import os
@@ -2840,19 +2841,49 @@ def generate_compdb_for_cmake_build(source_dir, build_dir):
     compdb = 'compile_commands.json'
     scylla_compdb_path = os.path.join(build_dir, compdb)
     seastar_compdb_path = ''
-    # sort build types by supposed indexing speed
+
+    # Sort build types by supposed indexing speed
     for build_type in ['Dev', 'Debug', 'RelWithDebInfo', 'Sanitize']:
-        seastar_compdb_path = os.path.join(build_dir, build_type, 'seastar', compdb)
-        if os.path.exists(seastar_compdb_path):
+        candidate = os.path.join(build_dir, build_type, 'seastar', compdb)
+        if os.path.exists(candidate):
+            seastar_compdb_path = candidate
             break
-    assert seastar_compdb_path, "Seasetar's building system is not configured yet."
-    # if the file exists, just overwrite it so we can keep it updated
-    with open(os.path.join(source_dir, compdb), 'w+b') as merged_compdb:
-        subprocess.run([os.path.join(source_dir, 'scripts/merge-compdb.py'),
-                        scylla_compdb_path,
-                        seastar_compdb_path],
-                       stdout=merged_compdb,
-                       check=True)
+
+    assert seastar_compdb_path, "Seastar's build system is not configured yet."
+
+    temp_merged_path = os.path.join(build_dir, 'merged_compile_commands.json')
+
+    # Merge compile commands into a temp file
+    with open(temp_merged_path, 'w+b') as merged_compdb:
+        subprocess.run([
+            os.path.join(source_dir, 'scripts/merge-compdb.py'),
+            scylla_compdb_path,
+            seastar_compdb_path
+        ], stdout=merged_compdb, check=True)
+
+    # Move merged file to root directory
+    shutil.move(temp_merged_path, os.path.join(source_dir, compdb))
+
+
+# def generate_compdb_for_cmake_build(source_dir, build_dir):
+#     # Since Seastar and Scylla are configured as separate projects, their compilation
+#     # databases need to be merged into a single database for tooling consumption.
+#     compdb = 'compile_commands.json'
+#     scylla_compdb_path = os.path.join(build_dir, compdb)
+#     seastar_compdb_path = ''
+#     # sort build types by supposed indexing speed
+#     for build_type in ['Dev', 'Debug', 'RelWithDebInfo', 'Sanitize']:
+#         seastar_compdb_path = os.path.join(build_dir, build_type, 'seastar', compdb)
+#         if os.path.exists(seastar_compdb_path):
+#             break
+#     assert seastar_compdb_path, "Seasetar's building system is not configured yet."
+#     # if the file exists, just overwrite it so we can keep it updated
+#     with open(os.path.join(source_dir, compdb), 'w+b') as merged_compdb:
+#         subprocess.run([os.path.join(source_dir, 'scripts/merge-compdb.py'),
+#                         scylla_compdb_path,
+#                         seastar_compdb_path],
+#                        stdout=merged_compdb,
+#                        check=True)
 
 
 def configure_using_cmake(args):
@@ -2869,6 +2900,8 @@ def configure_using_cmake(args):
                                 in selected_modes)
     settings = {
         'CMAKE_CONFIGURATION_TYPES': selected_configs,
+        'CMAKE_INSTALL_PREFIX' : '/mnt/usr/local',
+        'CMAKE_PREFIX_PATH': os.path.expanduser('~/.local'),
         'CMAKE_CROSS_CONFIGS': selected_configs,
         'CMAKE_DEFAULT_CONFIGS': selected_configs,
         'CMAKE_C_COMPILER': args.cc,

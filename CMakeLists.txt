@@ -164,6 +164,14 @@ file(MAKE_DIRECTORY "${scylla_gen_build_dir}")
 
 include(add_version_library)
 generate_scylla_version()
+# list(APPEND CMAKE_PREFIX_PATH "$ENV{HOME}/.local")
+# find_package(gRPC CONFIG REQUIRED)
+# find_package(Protobuf REQUIRED)
+
+# list(APPEND CMAKE_PREFIX_PATH "/mnt/usr/local")
+# find_package(CURL REQUIRED)
+# find_package(nlohmann_json REQUIRED)
+find_package(opentelemetry-cpp CONFIG REQUIRED)
 
 add_library(scylla-main STATIC)
 target_sources(scylla-main
@@ -221,28 +229,6 @@ target_link_libraries(scylla-main
     lz4::lz4_static
     zstd::zstd_static
 )
-
-option(OPENTELEMETRY "Build with OpenTelemetry support" ON)
-if (OPENTELEMETRY)
-  list(APPEND CMAKE_PREFIX_PATH "/opt/opentelemetry")
-
-  find_package(opentelemetry-cpp CONFIG REQUIRED COMPONENTS
-    api
-    sdk
-    exporters_ostream
-    exporters_otlp_grpc
-  )
-
-  list(APPEND THIRDPARTY_LIBS
-    opentelemetry-cpp::api
-    opentelemetry-cpp::sdk
-    opentelemetry-cpp::ostream_span_exporter
-    opentelemetry-cpp::ostream_metrics_exporter
-    opentelemetry-cpp::ostream_log_record_exporter
-    opentelemetry-cpp::otlp_grpc_exporter_factory
-    opentelemetry-cpp::otlp_grpc_exporter
-  )
-endif()
 
 option(Scylla_CHECK_HEADERS
   "Add check-headers target for checking the self-containness of headers")
@@ -368,6 +354,12 @@ target_link_libraries(scylla PRIVATE
     p11-kit::p11-kit
     Seastar::seastar
     absl::headers
+    opentelemetry-cpp::api
+    opentelemetry-cpp::sdk
+    opentelemetry-cpp::ostream_span_exporter
+    opentelemetry-cpp::ostream_metrics_exporter
+    opentelemetry-cpp::ostream_log_record_exporter
+    opentelemetry-cpp::otlp_grpc_exporter
     yaml-cpp::yaml-cpp
     Boost::program_options)
 
