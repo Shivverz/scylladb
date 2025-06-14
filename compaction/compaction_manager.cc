@@ -6,13 +6,16 @@
  * SPDX-License-Identifier: LicenseRef-ScyllaDB-Source-Available-1.0
  */
 
+#include "compaction/compaction_strategy_type.hh"
 #include "table_state.hh"
-#include <opentelemetry/trace/provider.h>
-#include <opentelemetry/trace/scope.h>
-#include <opentelemetry/trace/tracer.h>
+// #include <opentelemetry/trace/provider.h>
+// #include <opentelemetry/trace/scope.h>
+// #include <opentelemetry/trace/tracer.h>
+#include <cstdio>
+#include <tuple>
 #include <type_traits>
 
-namespace trace = opentelemetry::trace;
+// namespace trace = opentelemetry::trace;
 
 #include "compaction_manager.hh"
 #include "compaction_descriptor.hh"
@@ -38,6 +41,7 @@ namespace trace = opentelemetry::trace;
 #include "db/system_keyspace.hh"
 #include "tombstone_gc-internals.hh"
 #include <cmath>
+#include <variant>
 #include "utils/labels.hh"
 
 static logging::logger cmlog("compaction_manager");
@@ -630,32 +634,63 @@ future<compaction_manager::compaction_stats_opt> compaction_manager::perform_com
         task_executor->switch_state(compaction_task_executor::state::none);
     });
 
-    auto tracer = trace::Provider::GetTracerProvider()->GetTracer("scylla");
-    auto span   = tracer->StartSpan("Compaction.Perform");
-    trace::Scope scope(span);
+    // auto tracer = trace::Provider::GetTracerProvider()->GetTracer("scylla");
+    // auto span   = tracer->StartSpan("Compaction.Perform");
+    // trace::Scope scope(span);
 
-    auto maybe_table_state = [&]<typename T>(T&& arg) -> compaction::table_state* {
+    auto func = []<typename T>(T&& arg) -> compaction::table_state* {
         if constexpr (std::is_same_v<std::remove_cvref_t<T>, compaction::table_state*>) {
             return arg;
         } else {
-            reutnr nullptr;
+            return nullptr;
         }
-    } ((args)...);
+    };
+
+    auto maybe_table_state = func(std::get<0>(std::forward_as_tuple(args...)));
 
     if (maybe_table_state) {
         const compaction::table_state* t = maybe_table_state;
-        span->SetAttribute("keyspace", t->schema()->ks_name());
-        span->SetAttribute("table", t->schema()->cf_name());
-        span->SetAttribute("group_id", t->schema()->get_group_id());
-        span->SetAttribute("compaction_strategy", t->get_compaction_strategy())
+        const int compaction_type_index = static_cast<int>(t->schema()->compaction_strategy());
+        fmt::print(stderr,
+            "============================================================\n"
+            "=== COMPACTION:\n"
+            "=== ID: {}\n"
+            "=== Keyspace: {}\n"
+            "=== Column Family: {}\n"
+            "=== Compaction Type: {}\n"
+            "=== Group ID: {}\n",
+            t->schema()->id(),
+            t->schema()->ks_name(),
+            t->schema()->cf_name(),
+            sstables::Compaction_Types[compaction_type_index],
+            t->get_group_id()
+        );
+        
+        // span->SetAttribute("keyspace", t->schema()->ks_name());
+        // span->SetAttribute("table", t->schema()->cf_name());
+        // span->SetAttribute("group_id", t->schema()->get_group_id());
+        // span->SetAttribute("compaction_strategy", t->get_compaction_strategy())
     }
 
     auto task = co_await get_task_manager_module().make_task(task_executor, parent_info);
     task->start();
     co_await task->done();
 
-    span->End();
+    // span->End();
     co_return task_executor->get_stats();
+}
+
+std::optional<gate::holder> compaction_manager::start_compaction(table_state& t) {
+    if (_state != state::enabled) {
+        return std::nullopt;
+    }
+
+    auto it = _compaction_state.find(&t);
+    if (it == _compaction_state.end() || it->second.gate.is_closed()) {
+        return std::nullopt;
+    }
+
+    return it->second.gate.hold();
 }
 
 future<> compaction_manager::perform_major_compaction(table_state& t, tasks::task_info info, bool consider_only_existing_data) {

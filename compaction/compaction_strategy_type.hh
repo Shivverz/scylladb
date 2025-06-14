@@ -8,18 +8,32 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 namespace sstables {
 
 enum class compaction_strategy_type {
-    null,
+    null = 0,
     size_tiered,
     leveled,
     time_window,
     in_memory,
     incremental,
 };
+
+static const char* Compaction_Types[] = {
+    "null",
+    "size_tiered",
+    "leveled",
+    "time_window",
+    "in_memory",
+    "incremental",
+};
+
+static_assert(sizeof(sstables::Compaction_Types)/sizeof(char*) == 
+              static_cast<size_t>(sstables::compaction_strategy_type::incremental) + 1, 
+              "sizes don't match");
 
 enum class reshape_mode { strict, relaxed };
 
