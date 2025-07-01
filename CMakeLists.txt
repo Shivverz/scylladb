@@ -215,12 +215,6 @@ target_sources(scylla-main
     vint-serialization.cc)
 target_link_libraries(scylla-main
   PRIVATE
-    opentelemetry-cpp::api
-    opentelemetry-cpp::sdk
-    opentelemetry-cpp::ostream_span_exporter
-    opentelemetry-cpp::ostream_metrics_exporter
-    opentelemetry-cpp::ostream_log_record_exporter
-    opentelemetry-cpp::otlp_grpc_exporter
     db
     absl::headers
     absl::btree
@@ -345,6 +339,15 @@ set(scylla_libs
     types
     utils)
 target_link_libraries(scylla PRIVATE
+    opentelemetry-cpp::api
+    opentelemetry-cpp::sdk
+    opentelemetry-cpp::sdk_trace
+    opentelemetry-cpp::sdk_common
+    opentelemetry-cpp::sdk_resource
+    opentelemetry-cpp::otlp_grpc_exporter
+    opentelemetry-cpp::ostream_span_exporter
+    opentelemetry-cpp::ostream_metrics_exporter
+    opentelemetry-cpp::ostream_log_record_exporter
     ${scylla_libs})
 
 if(Scylla_ENABLE_LTO)

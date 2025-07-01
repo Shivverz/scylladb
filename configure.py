@@ -2900,8 +2900,8 @@ def configure_using_cmake(args):
                                 in selected_modes)
     settings = {
         'CMAKE_CONFIGURATION_TYPES': selected_configs,
-        'CMAKE_INSTALL_PREFIX' : '/mnt/usr/local/lib/cmake/opentelemetry-cpp',
-        'CMAKE_PREFIX_PATH': os.path.expanduser('~/.local'),
+        'CMAKE_INSTALL_PREFIX' : '/usr/local/',
+        'CMAKE_INSTALL_LIBDIR' : 'lib64',
         'CMAKE_CROSS_CONFIGS': selected_configs,
         'CMAKE_DEFAULT_CONFIGS': selected_configs,
         'CMAKE_C_COMPILER': args.cc,
