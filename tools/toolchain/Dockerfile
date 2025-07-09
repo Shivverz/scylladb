@@ -25,27 +25,44 @@ RUN mkdir -p /root/.m2/repository
 ENV JAVA8_HOME=/usr/lib/jvm/java-1.8.0-openjdk
 RUN ./tools/toolchain/optimized_clang.sh
 
-RUN git clone --branch v1.20.0 https://github.com/open-telemetry/opentelemetry-cpp.git && \
+RUN git clone https://github.com/open-telemetry/opentelemetry-cpp.git && \
     cd opentelemetry-cpp && \
     mkdir build && cd build && \
-    export MY_INSTALL_DIR=/root/.local && \
     cmake .. \
       -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX=/usr/local \
-      -DCMAKE_INSTALL_LIBDIR=lib64 \
+      -DCMAKE_INSTALL_PREFIX=/usr/local/opentelemetry \
       -DBUILD_SHARED_LIBS=OFF \
-      -DBUILD_TESTING=OFF \
+      -DBUILD_STATIC_LIBS=ON \
       -DWITH_OTLP=ON \
       -DWITH_OTLP_GRPC=ON \
-      -DWITH_ABSEIL=ON \
-      -DCMAKE_PREFIX_PATH="$MY_INSTALL_DIR" \
-      -DProtobuf_DIR="$MY_INSTALL_DIR/lib64/cmake/protobuf" \
-      -DgRPC_DIR="$MY_INSTALL_DIR/lib64/cmake/grpc" && \
+      -DWITH_EXPORTERS=ON \
+      -DWITH_LOGS_PREVIEW=ON \
+      -DWITH_METRICS_PREVIEW=ON \
+      -DBUILD_TESTING=OFF \
+      -DWITH_TEST=OFF \
+      -DWITH_BENCHMARK=OFF \
+      -DWITH_EXAMPLES=OFF && \
     make -j$(nproc) && \
-    make install && \
-    ldconfig
+    sudo make install && \
+    cd .. && \ 
+    rm -rf build && \
+    mkdir build && \
+    cd build && \
+    cmake .. \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=/usr/local/opentelemetry \
+      -DBUILD_SHARED_LIBS=ON \
+      -DBUILD_STATIC_LIBS=OFF \
+      -DWITH_OTLP=ON \
+      -DWITH_OTLP_GRPC=ON \
+      -DWITH_EXPORTERS=ON \
+      -DWITH_LOGS_PREVIEW=ON \
+      -DWITH_METRICS_PREVIEW=ON \
+      -DBUILD_TESTING=OFF \
+      -DWITH_TEST=OFF \
+      -DWITH_BENCHMARK=OFF \
+      -DWITH_EXAMPLES=OFF && \
+    make -j$(nproc) && \
+    sudo make install
 
-# Set library paths for linking later
-ENV LD_LIBRARY_PATH=$HOME/.local/lib64:$HOME/.local/lib
-
-CMD /bin/bash
+CMD ["/bin/bash"]

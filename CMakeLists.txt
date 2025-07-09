@@ -164,6 +164,7 @@ file(MAKE_DIRECTORY "${scylla_gen_build_dir}")
 
 include(add_version_library)
 generate_scylla_version()
+find_package(protobuf CONFIG REQUIRED)
 find_package(opentelemetry-cpp CONFIG REQUIRED COMPONENTS
     api
     sdk
@@ -341,13 +342,10 @@ set(scylla_libs
 target_link_libraries(scylla PRIVATE
     opentelemetry-cpp::api
     opentelemetry-cpp::sdk
-    opentelemetry-cpp::sdk_trace
-    opentelemetry-cpp::sdk_common
-    opentelemetry-cpp::sdk_resource
-    opentelemetry-cpp::otlp_grpc_exporter
     opentelemetry-cpp::ostream_span_exporter
     opentelemetry-cpp::ostream_metrics_exporter
     opentelemetry-cpp::ostream_log_record_exporter
+    opentelemetry-cpp::otlp_grpc_exporter
     ${scylla_libs})
 
 if(Scylla_ENABLE_LTO)

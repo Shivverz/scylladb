@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-export MY_INSTALL_DIR=/root/.local
+export MY_INSTALL_DIR=/usr
 export PATH="$MY_INSTALL_DIR/bin:$PATH"
 
 # Build and install Protobuf first
