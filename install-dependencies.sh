@@ -31,6 +31,7 @@ fi
 
 debian_base_packages=(
     clang
+    cmake
     gdb
     cargo
     wabt
