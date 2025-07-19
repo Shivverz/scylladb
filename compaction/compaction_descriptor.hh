@@ -31,6 +31,22 @@ enum class compaction_type {
     Split = 8,
 };
 
+static const char* Compaction_Types[] = {
+    "Compaction",
+    "Cleanup",
+    "Validation",
+    "Scrub",
+    "Index_build",
+    "Reshard",
+    "Upgrade",
+    "Reshape",
+    "Split",
+};
+
+static_assert(sizeof(sstables::Compaction_Types)/sizeof(char*) == 
+              static_cast<size_t>(sstables::compaction_type::Split) + 1, 
+              "sizes don't match");
+
 struct compaction_completion_desc {
     // Old, existing SSTables that should be deleted and removed from the SSTable set.
     std::vector<shared_sstable> old_sstables;

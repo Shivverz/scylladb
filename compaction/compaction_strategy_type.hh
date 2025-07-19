@@ -22,7 +22,7 @@ enum class compaction_strategy_type {
     incremental,
 };
 
-static const char* Compaction_Types[] = {
+static const char* Compaction_Strategy_Types[] = {
     "null",
     "size_tiered",
     "leveled",
@@ -31,7 +31,7 @@ static const char* Compaction_Types[] = {
     "incremental",
 };
 
-static_assert(sizeof(sstables::Compaction_Types)/sizeof(char*) == 
+static_assert(sizeof(sstables::Compaction_Strategy_Types)/sizeof(char*) == 
               static_cast<size_t>(sstables::compaction_strategy_type::incremental) + 1, 
               "sizes don't match");
 

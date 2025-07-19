@@ -8,14 +8,14 @@
 
 #include "compaction/compaction_strategy_type.hh"
 #include "table_state.hh"
-// #include <opentelemetry/trace/provider.h>
-// #include <opentelemetry/trace/scope.h>
-// #include <opentelemetry/trace/tracer.h>
+#include <opentelemetry/trace/provider.h>
+#include <opentelemetry/trace/scope.h>
+#include <opentelemetry/trace/tracer.h>
 #include <cstdio>
 #include <tuple>
 #include <type_traits>
 
-// namespace trace = opentelemetry::trace;
+namespace trace = opentelemetry::trace;
 
 #include "compaction_manager.hh"
 #include "compaction_descriptor.hh"
@@ -634,9 +634,9 @@ future<compaction_manager::compaction_stats_opt> compaction_manager::perform_com
         task_executor->switch_state(compaction_task_executor::state::none);
     });
 
-    // auto tracer = trace::Provider::GetTracerProvider()->GetTracer("scylla");
-    // auto span   = tracer->StartSpan("Compaction.Perform");
-    // trace::Scope scope(span);
+    auto tracer = trace::Provider::GetTracerProvider()->GetTracer("scylla");
+    auto span   = tracer->StartSpan("Compaction::Perform");
+    auto scope = tracer->WithActiveSpan(span);
 
     auto func = []<typename T>(T&& arg) -> compaction::table_state* {
         if constexpr (std::is_same_v<std::remove_cvref_t<T>, compaction::table_state*>) {
@@ -653,7 +653,7 @@ future<compaction_manager::compaction_stats_opt> compaction_manager::perform_com
         const int compaction_type_index = static_cast<int>(t->schema()->compaction_strategy());
         fmt::print(stderr,
             "============================================================\n"
-            "=== COMPACTION:\n"
+            "=== COMPACTION MANAGER:\n"
             "=== ID: {}\n"
             "=== Keyspace: {}\n"
             "=== Column Family: {}\n"

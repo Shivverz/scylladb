@@ -9,12 +9,23 @@
 /*
  */
 
+#include "compaction/compaction_descriptor.hh"
+#include <cstdio>
+#include <fmt/color.h>
+#include <fmt/core.h>
+#include <fmt/format.h>
 #include <vector>
 #include <map>
 #include <functional>
 #include <utility>
 #include <assert.h>
 #include <algorithm>
+
+#include <opentelemetry/trace/provider.h>
+#include <opentelemetry/trace/scope.h>
+#include <opentelemetry/trace/tracer.h>
+
+namespace trace = opentelemetry::trace;
 
 #include <boost/range/join.hpp>
 
@@ -791,6 +802,15 @@ private:
         auto ssts = make_lw_shared<sstables::sstable_set>(make_sstable_set_for_input());
         auto fully_expired = _table_s.fully_expired_sstables(_sstables, gc_clock::now());
         min_max_tracker<api::timestamp_type> timestamp_tracker;
+        const int compaction_type_index = static_cast<int>(_table_s.schema()->compaction_strategy());
+
+        auto tracer = trace::Provider::GetTracerProvider()->GetTracer("scylla");
+        std::string str(report_start_desc());
+        auto span   = tracer->StartSpan("Compaction::Setup - " + str, {
+                {"Compaction Strategy Type", sstables::Compaction_Strategy_Types[compaction_type_index]},
+                {"Group ID", _table_s.get_group_id()},
+        });
+        auto scope = tracer->WithActiveSpan(span);
 
         double sum_of_estimated_droppable_tombstone_ratio = 0;
         _input_sstable_generations.reserve(_sstables.size());
@@ -811,6 +831,9 @@ private:
             // Do not actually compact a sstable that is fully expired and can be safely
             // dropped without resurrecting old data.
             if (tombstone_expiration_enabled() && fully_expired.contains(sst)) {
+                span->AddEvent("InputSSTable", {
+                    {"Status", fmt::format("Fully expired sstable {} will be dropped on compaction completion", sst->get_filename())},
+                });
                 log_debug("Fully expired sstable {} will be dropped on compaction completion", sst->get_filename());
                 continue;
             }
@@ -826,10 +849,35 @@ private:
             sum_of_estimated_droppable_tombstone_ratio += sst->estimate_droppable_tombstone_ratio(gc_clock::now(), get_tombstone_gc_state(), _schema);
             _compacting_data_file_size += sst->ondisk_data_size();
             _compacting_max_timestamp = std::max(_compacting_max_timestamp, sst->get_stats_metadata().max_timestamp);
+
+            // span->AddEvent("InputSSTable", {
+            //     {"Generation", sst->generation()},
+            //     {"Origin", sst->get_origin()},
+            //     {"Size Bytes", sst->bytes_on_disk()},
+            //     {"Estimated Key Count", sst->get_estimated_key_count()},
+            //     {"Estimated Droppable Tombstone Ratio", sst->estimate_droppable_tombstone_ratio(gc_clock::now(), get_tombstone_gc_state(), _schema)},
+            // });
+
             if (sst->originated_on_this_node().value_or(false) && sst_stats.position.shard_id() == this_shard_id()) {
                 _rp = std::max(_rp, sst_stats.position);
             }
         }
+        // const int compaction_type_index = static_cast<int>(_table_s.schema()->compaction_strategy());
+        // fmt::print(stderr,
+        //     "============================================================\n"
+        //     "=== {}:\n"
+        //     "=== ID: {}\n"
+        //     "=== Keyspace: {}\n"
+        //     "=== Column Family: {}\n"
+        //     "=== Compaction Type: {}\n"
+        //     "=== Group ID: {}\n",
+        //     report_start_desc(),
+        //     _table_s.schema()->id(),
+        //     _table_s.schema()->ks_name(),
+        //     _table_s.schema()->cf_name(),
+        //     sstables::Compaction_Strategy_Types[compaction_type_index],
+        //     _table_s.get_group_id()
+        // );
         log_info("{} [{}]", report_start_desc(), fmt::join(_sstables | std::views::transform([] (auto sst) { return to_string(sst, true); }), ","));
         if (ssts->size() < _sstables.size()) {
             log_debug("{} out of {} input sstables are fully expired sstables that will not be actually compacted",
@@ -842,6 +890,7 @@ private:
 
         _ms_metadata.min_timestamp = timestamp_tracker.min();
         _ms_metadata.max_timestamp = timestamp_tracker.max();
+        span->End();
     }
 
     // This consumer will perform mutation compaction on producer side using
@@ -1843,7 +1892,18 @@ public:
 };
 
 future<compaction_result> compaction::run(std::unique_ptr<compaction> c) {
-    return seastar::async([c = std::move(c)] () mutable {
+    const int compaction_type_index = static_cast<int>(c->_schema->type());
+    auto tracer = trace::Provider::GetTracerProvider()->GetTracer("scylla");
+    auto span   = tracer->StartSpan("Compaction::Run", {
+            {"Schema ID", fmt::format("{}", c->_schema->id())},
+            {"Type", sstables::Compaction_Types[compaction_type_index]},
+            {"Keyspace", fmt::format("{}", c->_schema->ks_name())},
+            {"Column Family", fmt::format("{}", c->_schema->cf_name())},
+            {"Input SSTables", int(c->_sstables.size())},
+    });
+    auto scope = tracer->WithActiveSpan(span);
+
+    return seastar::async([c = std::move(c), span] () mutable {
         c->setup().get();
         auto consumer = c->consume();
 
@@ -1853,10 +1913,23 @@ future<compaction_result> compaction::run(std::unique_ptr<compaction> c) {
         } catch (...) {
             c->on_interrupt(std::current_exception());
             c = nullptr; // make sure writers are stopped while running in thread context. This is because of calls to file.close().get();
+            span->SetAttribute("Status", "Interrupted");
+            span->End();
             throw;
         }
 
-        return c->finish(std::move(start_time), db_clock::now());
+        auto result = c->finish(std::move(start_time), db_clock::now());
+
+        span->SetAttribute("Compaction Size", c->_cdata.compaction_size);
+        span->SetAttribute("Total Partitions", c->_cdata.compaction_size);
+        span->SetAttribute("Total Keys Written", c->_cdata.compaction_size);
+        span->SetAttribute("Max SSTable Size", c->_max_sstable_size);
+        span->SetAttribute("SSTable Level", c->_sstable_level);
+        span->SetAttribute("Total Keys Written", c->_cdata.compaction_size);
+        span->SetAttribute("Status", "Completed");
+        span->End();
+
+        return result;
     });
 }
 
