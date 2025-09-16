@@ -1770,7 +1770,7 @@ user_cflags = args.user_cflags + f" -ffile-prefix-map={curdir}=."
 
 # Since gcc 13, libgcc doesn't need the exception workaround
 user_cflags += ' -DSEASTAR_NO_EXCEPTION_HACK'
-user_cflags += ' -I/usr/local/opentelemetry/include'
+# user_cflags += ' -I/usr/local/opentelemetry-shared/include'
 
 if args.target != '':
     user_cflags += ' -march=' + args.target
@@ -1965,7 +1965,7 @@ def configure_seastar(build_dir, mode, mode_config):
         '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON',
         '-DSeastar_SCHEDULING_GROUPS_COUNT=19',
         '-DSeastar_IO_URING=ON',
-        '-DCMAKE_PREFIX_PATH=/usr/local/opentelemetry',
+        # '-DCMAKE_PREFIX_PATH=/usr/local/opentelemetry-shared',
     ]
 
     if args.stack_guards is not None:
@@ -2094,7 +2094,8 @@ libs = ' '.join([maybe_static(args.staticyamlcpp, '-lyaml-cpp'), '-latomic', '-l
                  '-ldeflate',
                 ])
 
-libs += ' -L/usr/local/opentelemetry/lib -lopentelemetry_proto -lopentelemetry_trace'
+# libs += ' -L/usr/local/opentelemetry-shared/lib -lopentelemetry_proto -lopentelemetry_trace'
+# libs += ' -L/usr/local/protobuf/lib -lprotobuf'
 
 args.user_cflags += " " + pkg_config('p11-kit-1', '--cflags')
 
@@ -2905,7 +2906,6 @@ def configure_using_cmake(args):
                                 in selected_modes)
     settings = {
         'CMAKE_CONFIGURATION_TYPES': selected_configs,
-        'CMAKE_PREFIX_PATH': '/usr/local/opentelemetry',
         'CMAKE_CROSS_CONFIGS': selected_configs,
         'CMAKE_DEFAULT_CONFIGS': selected_configs,
         'CMAKE_C_COMPILER': args.cc,

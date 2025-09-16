@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.27)
 project(scylla)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+add_compile_options(-Wno-error=deprecated-builtins)
 
 list(APPEND CMAKE_MODULE_PATH
   ${CMAKE_CURRENT_SOURCE_DIR}/cmake
@@ -122,11 +123,27 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
 endif()
 set(ABSL_DEFAULT_LINKOPTS
     $<$<CONFIG:Debug,Sanitize>:$<TARGET_PROPERTY:Sanitizers::address,INTERFACE_LINK_LIBRARIES>;$<TARGET_PROPERTY:Sanitizers::undefined_behavior,INTERFACE_LINK_LIBRARIES>>)
-add_subdirectory(abseil)
-add_library(absl-headers INTERFACE)
-target_include_directories(absl-headers SYSTEM INTERFACE
-    "${PROJECT_SOURCE_DIR}/abseil")
-add_library(absl::headers ALIAS absl-headers)
+
+# Provide bundled abseil headers as an interface target if not already provided
+if(NOT TARGET absl-headers)
+    add_library(absl-headers INTERFACE)
+    target_include_directories(absl-headers SYSTEM INTERFACE
+        "${PROJECT_SOURCE_DIR}/abseil")
+endif()
+
+find_package(absl CONFIG QUIET)
+if(NOT absl_FOUND)
+    message(STATUS "absl not found via find_package — building bundled abseil from ${PROJECT_SOURCE_DIR}/abseil")
+    add_subdirectory(abseil)
+else()
+    message(STATUS "Found absl package via CMake")
+endif()
+
+# Create an alias for absl-headers only if it's not already provided by the absl package
+if(NOT TARGET absl::headers AND TARGET absl-headers)
+    add_library(absl::headers ALIAS absl-headers)
+endif()
+find_package(Protobuf REQUIRED)
 
 # Exclude absl::strerror from the default "all" target since it's not
 # used in Scylla build and, moreover, makes use of deprecated glibc APIs,
@@ -136,7 +153,10 @@ add_library(absl::headers ALIAS absl-headers)
 # Need to use the internal "absl_strerror" target name instead of namespaced
 # variant because `set_target_properties` does not understand the latter form,
 # unfortunately.
-set_target_properties(absl_strerror PROPERTIES EXCLUDE_FROM_ALL TRUE)
+if(TARGET absl_strerror)
+    set_target_properties(absl_strerror PROPERTIES EXCLUDE_FROM_ALL TRUE)
+endif()
+#set_target_properties(absl_strerror PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
 # System libraries dependencies
 find_package(Boost REQUIRED
@@ -164,7 +184,12 @@ file(MAKE_DIRECTORY "${scylla_gen_build_dir}")
 
 include(add_version_library)
 generate_scylla_version()
-find_package(Protobuf REQUIRED)
+list(PREPEND CMAKE_PREFIX_PATH "/usr/local/opentelemetry-shared")
+# list(PREPEND CMAKE_PREFIX_PATH "/opt/opentelemetry")
+include_directories("/usr/local/opentelemetry-shared/include")
+# include_directories("/opt/opentelemetry/include")
+link_directories("/usr/local/opentelemetry-shared/lib")
+# link_directories("/opt/opentelemetry/lib")
 find_package(opentelemetry-cpp CONFIG REQUIRED COMPONENTS
     api
     sdk

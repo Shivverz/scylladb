@@ -9,14 +9,12 @@ COPY tools/cqlsh/requirements.txt tools/cqlsh/requirements.txt
 COPY seastar/install-dependencies.sh seastar/install-dependencies.sh
 COPY tools/toolchain/system-auth tools/toolchain/system-auth
 COPY tools/toolchain/optimized_clang.sh tools/toolchain/optimized_clang.sh
-COPY install-grpc-cpp.sh ./install-grpc-cpp.sh
 RUN echo install_weak_deps=False >> /etc/dnf/dnf.conf
 RUN dnf -y update \
     && dnf -y install 'dnf-command(copr)' \
     && dnf -y install ccache \
     && dnf -y install devscripts debhelper fakeroot file rpm-build \
     && ./install-dependencies.sh \
-    && ./install-grpc-cpp.sh && dnf clean all \
     && rm -rf /root/.cache /root/.cargo \
     && echo 'ALL ALL=(ALL:ALL) NOPASSWD: ALL' >> /etc/sudoers \
     && cp ./tools/toolchain/system-auth /etc/pam.d \
@@ -27,10 +25,10 @@ RUN ./tools/toolchain/optimized_clang.sh
 
 RUN git clone https://github.com/open-telemetry/opentelemetry-cpp.git && \
     cd opentelemetry-cpp && \
-    mkdir build && cd build && \
+    mkdir build-static && cd build-static && \
     cmake .. \
       -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX=/usr/local/opentelemetry \
+      -DCMAKE_INSTALL_PREFIX=/usr/local/opentelemetry-static \
       -DBUILD_SHARED_LIBS=OFF \
       -DBUILD_STATIC_LIBS=ON \
       -DWITH_OTLP=ON \
@@ -43,14 +41,12 @@ RUN git clone https://github.com/open-telemetry/opentelemetry-cpp.git && \
       -DWITH_BENCHMARK=OFF \
       -DWITH_EXAMPLES=OFF && \
     make -j$(nproc) && \
-    sudo make install && \
-    cd .. && \ 
-    rm -rf build && \
-    mkdir build && \
-    cd build && \
+    make install && \
+    cd .. && \
+    mkdir build-shared && cd build-shared && \
     cmake .. \
       -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX=/usr/local/opentelemetry \
+      -DCMAKE_INSTALL_PREFIX=/usr/local/opentelemetry-shared \
       -DBUILD_SHARED_LIBS=ON \
       -DBUILD_STATIC_LIBS=OFF \
       -DWITH_OTLP=ON \
@@ -63,6 +59,5 @@ RUN git clone https://github.com/open-telemetry/opentelemetry-cpp.git && \
       -DWITH_BENCHMARK=OFF \
       -DWITH_EXAMPLES=OFF && \
     make -j$(nproc) && \
-    sudo make install
-
+    make install
 CMD ["/bin/bash"]
