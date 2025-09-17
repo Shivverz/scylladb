@@ -228,7 +228,6 @@ docker_common_args+=(
        -v "${CARGO_HOME}:${CARGO_HOME}" \
        -w "$PWD" \
        -e HOME="$HOME" \
-       -e "GIT_CONFIG_PARAMETERS=-c safe.directory=/home/shivverz/Documents/scylladb" \
        "${docker_args[@]}" \
        "$image" \
        "${args[@]}"
